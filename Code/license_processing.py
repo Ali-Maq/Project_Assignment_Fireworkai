@@ -141,7 +141,7 @@ def validate_fields_with_llama405b(extracted_json, raw_text):
     payload = {
         "model": "accounts/fireworks/models/llama-v3p1-405b-instruct",
         "max_tokens": 16384,
-        "temperature": 0.2,
+        "temperature": 0.5,
         "response_format": {"type": "json_object", "schema": LicenseData.schema_json()},
         "messages": [
             {
