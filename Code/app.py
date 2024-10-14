@@ -1,15 +1,29 @@
-# app.py
 import streamlit as st
 from PIL import Image
-import io
+from io import BytesIO
 import base64
 import os
-from io import BytesIO
+from streamlit_cropper import st_cropper
 from orientation import correct_image_orientation, get_orientation_from_llama
 from license_processing import process_license
 from passport_processing import process_passport
 
+import openai
+os.environ["FIREWORKS_API_KEY"] = "fw_3ZYfxHwhiBcN7MvMuZyemtjq"
+API_KEY = os.environ.get("FIREWORKS_API_KEY")
+client = openai.Client(api_key="fw_3ZZMiTWAZFcP2JQ6AjSyX3zz", base_url="https://api.fireworks.ai/inference/v1")
+
+# Try to import LicenseData, but don't fail if it's not available
+try:
+    from license_processing import LicenseData
+    USE_LICENSE_DATA = True
+except ImportError:
+    USE_LICENSE_DATA = False
+    st.warning("LicenseData model not available. Validation will be skipped.")
+
 def encode_image_base64(img):
+    if img.mode in ('RGBA', 'LA'):
+        img = img.convert('RGB')
     buffered = BytesIO()
     img.save(buffered, format="JPEG")
     return base64.b64encode(buffered.getvalue()).decode('utf-8')
@@ -40,19 +54,36 @@ def main():
                     st.image(corrected_image, caption="Corrected Image", use_column_width=True)
                     image = corrected_image
 
-        # Manual orientation correction
+        # Manual orientation correction with fixed values (multiples of 90)
         st.write("If the orientation is still incorrect, you can manually adjust it:")
-        manual_angle = st.slider("Rotation angle", -180, 180, 0)
+        manual_angle = st.select_slider(
+            "Rotation angle", 
+            options=[-90, 0, 90, 180, 270],
+            value=0
+        )
         if manual_angle != 0:
             manually_corrected_image = image.rotate(-manual_angle, expand=True)
             st.image(manually_corrected_image, caption="Manually Corrected Image", use_column_width=True)
             image = manually_corrected_image
+
+        # Image cropping
+        st.write("Select region of interest (click and drag on the image):")
+        st.write("You can move the red box by dragging the four corners or the sides to adjust the area you want to select.")
+        cropped_img = st_cropper(image, realtime_update=True, box_color='red', aspect_ratio=None)
+
+        if cropped_img is not None:
+            st.image(cropped_img, caption="Cropped Image", use_column_width=True)
+            image = cropped_img  # Use the cropped image for further processing
 
         # Document processing
         if st.button("Process Document"):
             with st.spinner("Processing document..."):
                 # Save the image temporarily
                 temp_image_path = "temp_image.jpg"
+                
+                # Convert RGBA to RGB if necessary
+                if image.mode == 'RGBA':
+                    image = image.convert('RGB')
                 image.save(temp_image_path)
                 
                 try:
@@ -61,7 +92,7 @@ def main():
                     else:  # Driver's License
                         result, buffer = process_license(temp_image_path)
 
-                    # Display processing steps in main area
+                    # Display processing steps
                     with st.expander("View Processing Steps", expanded=True):
                         for step in buffer:
                             st.write(step['description'])
@@ -69,7 +100,16 @@ def main():
                     # Display results
                     st.success("Document processed successfully!")
                     st.subheader("Extracted Information")
-                    st.json(result)
+                    if doc_type == "Driver's License" and USE_LICENSE_DATA:
+                        # Validate the result against the LicenseData model
+                        try:
+                            validated_result = LicenseData(**result)
+                            st.json(validated_result.dict())
+                        except Exception as e:
+                            st.error(f"Error in validating result: {str(e)}")
+                            st.json(result)
+                    else:
+                        st.json(result)
 
                     # Display raw output in sidebar
                     st.sidebar.subheader("Raw Output")
@@ -83,9 +123,9 @@ def main():
                     # Clean up temporary file
                     if os.path.exists(temp_image_path):
                         os.remove(temp_image_path)
+
     st.sidebar.header("About")
     st.sidebar.info("This app processes passport and driver's license documents using AI.")
-
 
 if __name__ == "__main__":
     main()
