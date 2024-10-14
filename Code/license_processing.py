@@ -24,6 +24,8 @@ if not API_KEY:
 client = openai.Client(api_key=API_KEY, base_url="https://api.fireworks.ai/inference/v1")
 
 
+
+# Rest of your license_processing.py code...
 class Address(BaseModel):
     street: str = Field(..., description="Street address")
     city: str = Field(..., description="City")
@@ -31,24 +33,16 @@ class Address(BaseModel):
     zip_code: str = Field(..., description="ZIP code")
 
 class LicenseData(BaseModel):
-    full_name: Optional[str] = Field(None, description="Full name of the license holder")
-    date_of_birth: Optional[str] = Field(None, description="Date of birth (MM/DD/YYYY format)")
-    license_number: Optional[str] = Field(None, description="Driver's license number")
-    address: Optional[Address] = Field(None, description="Address of the license holder")
-    sex: Optional[str] = Field(None, description="Sex/Gender of the license holder")
-    height: Optional[str] = Field(None, description="Height of the license holder")
-    weight: Optional[str] = Field(None, description="Weight of the license holder (if available)")
+    full_name: str = Field(..., description="Full name of the license holder")
+    date_of_birth: str = Field(..., description="Date of birth")
+    license_number: str = Field(..., description="License number")
+    address: Address = Field(..., description="Address of the license holder")
+    sex: str = Field(..., description="Sex/Gender")
+    height: Optional[str] = Field(None, description="Height")
+    weight: Optional[str] = Field(None, description="Weight")
     eye_color: Optional[str] = Field(None, description="Eye color")
-    issuance_date: Optional[str] = Field(None, description="Date of issuance (labeled 'ISS' or similar)")
-    expiration_date: Optional[str] = Field(None, description="Date of expiration (labeled 'EXP')")
-    license_class: Optional[str] = Field(None, description="License class (A, B, C, etc.)")
-    endorsements: Optional[str] = Field(None, description="Endorsements (if applicable)")
-    restrictions: Optional[str] = Field(None, description="Restrictions (if applicable)")
-    organ_donor_status: Optional[bool] = Field(None, description="Whether the license holder is an organ donor")
-    real_id_symbol: Optional[str] = Field(None, description="Real ID compliance symbol if present")
-
-
-
+    issuance_date: Optional[str] = Field(None, description="Date of issuance")
+    expiration_date: str = Field(..., description="Expiration date")
 
 def encode_image_base64(img):
     if img.mode in ('RGBA', 'LA'):
@@ -63,21 +57,16 @@ def encode_image_direct(image_path):
 
 def extract_json_from_llama11b(image_base64):
     url = "https://api.fireworks.ai/inference/v1/chat/completions"
-    
-    # Generalized prompt for flexible field extraction
     prompt = (
-        "You are tasked with extracting fields from a driver's license. Extract all available fields, including "
-        "personal information (full name, date of birth, sex, etc.), license details (issuance date, expiration date, "
-        "class, endorsements, restrictions), and state-specific fields like organ donor status or Real ID symbol. "
-        "If a field is not available, return null. Pay attention to variations in field names (e.g., 'ISS' for issuance date). "
-        "Return the results in the following JSON schema:\n"
-        f"{LicenseData.schema_json(indent=2)}"
+        "Extract the following fields from the driver's license and provide them in a structured JSON format:\n"
+        f"{LicenseData.schema_json(indent=2)}\n"
+        "Ensure that the JSON output is structured correctly and the fields are properly filled. "
+        "Do not hallucinate information. Only provide data that can be verified from the image."
     )
-    
     payload = {
         "model": "accounts/fireworks/models/llama-v3p2-11b-vision-instruct",
         "max_tokens": 16384,
-        "temperature": 0.1,  # Lower temperature for more deterministic results
+        "temperature": 0.1,
         "response_format": {"type": "json_object", "schema": LicenseData.schema_json()},
         "messages": [
             {
@@ -89,24 +78,20 @@ def extract_json_from_llama11b(image_base64):
             }
         ]
     }
-
     headers = {
         "Accept": "application/json",
         "Content-Type": "application/json",
         "Authorization": f"Bearer {API_KEY}"
     }
-
     response = requests.post(url, headers=headers, json=payload)
     response.raise_for_status()
+    print("Structured JSON extraction from LLaMA 11B:")
+    pprint(response.json())
     return response.json()
-
 
 def extract_raw_text_from_llama11b(image_base64):
     url = "https://api.fireworks.ai/inference/v1/chat/completions"
-    
-    # Extracting raw text from the license image
-    prompt = "Extract all information (raw text) from this image of a driver's license, including state-specific fields."
-
+    prompt = "Extract all the information from this image"
     payload = {
         "model": "accounts/fireworks/models/llama-v3p2-11b-vision-instruct",
         "max_tokens": 16384,
@@ -121,41 +106,42 @@ def extract_raw_text_from_llama11b(image_base64):
             }
         ]
     }
-
     headers = {
         "Accept": "application/json",
         "Content-Type": "application/json",
         "Authorization": f"Bearer {API_KEY}"
     }
-
     response = requests.post(url, headers=headers, json=payload)
     response.raise_for_status()
+    print("Raw text extraction from LLaMA 11B:")
+    pprint(response.json())
     return response.json()
-
 
 def validate_fields_with_llama405b(extracted_json, raw_text):
     url = "https://api.fireworks.ai/inference/v1/chat/completions"
 
-    # Chain-of-Thought Reasoning Prompt for Validation
     validation_prompt = f"""
-    You are tasked with validating extracted fields from a driver's license. Cross-check each field and ensure consistency.
-
-    - Issuance date ('ISS'): Check if it is valid and associated with the correct label.
-    - Expiration date ('EXP'): Validate this and ensure it corresponds to the license expiration date.
-    - Check for optional fields like endorsements, restrictions, and Real ID symbols. Return null if not present.
-    - Ensure consistency between all fields and the raw text provided below.
-
+    You are an expert in US driver's license validation. Your task is to validate and extract information from a driver's license image, accommodating variations across different states.
+    
+    Given the extracted JSON and raw text from the image, please:
+    1. Extract and validate the core information typically found on US driver's licenses.
+    2. Include any additional fields that are present and relevant.
+    3. Ensure accuracy and consistency of the extracted information.
+    
+    Use the following schema for the output:
+    {LicenseData.schema_json(indent=2)}
+    
     Extracted JSON: {json.dumps(extracted_json)}
     
     Raw Text from Image: {raw_text}
-
-    Return the final validated JSON output, ensuring all fields are correctly assigned.
+    
+    Please provide the extracted and validated data in a JSON format that strictly adheres to the given schema. If a field is not available or not applicable, use null for optional fields or a placeholder for required fields.
     """
 
     payload = {
         "model": "accounts/fireworks/models/llama-v3p1-405b-instruct",
         "max_tokens": 16384,
-        "temperature": 0.5,
+        "temperature": 0.2,
         "response_format": {"type": "json_object", "schema": LicenseData.schema_json()},
         "messages": [
             {
@@ -173,10 +159,15 @@ def validate_fields_with_llama405b(extracted_json, raw_text):
 
     response = requests.post(url, headers=headers, json=payload)
     response.raise_for_status()
+
+    print("Validation and extraction response from LLaMA 405B:")
     validated_data = response.json()
+    pprint(validated_data)
 
-    return validated_data
+    # Extract the content from the response
+    validated_json = json.loads(validated_data['choices'][0]['message']['content'])
 
+    return validated_json
 
 def process_license(image_path):
     buffer = []
