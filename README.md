@@ -1,5 +1,5 @@
 # AI-Driven KYC Document Processing System
-
+![System Architecture](images/diagram-export-10-13-2024-7_44_03-PM.png)
 This repository contains my implementation of an AI-driven system for processing Know Your Customer (KYC) documents. This project was part of an interview assignment provided by Fireworks AI. It is designed to automate the identity verification process for various document types, such as passports and driver's licenses, leveraging advanced AI techniques for information extraction, validation, and structuring. Below, you will find a detailed description of the components, methodologies, and system architecture employed in this project.
 
 ## Table of Contents
@@ -67,8 +67,8 @@ The AI-driven KYC document processing system architecture consists of the follow
 
 For better understanding, please refer to the diagram below, which visually represents the system architecture and flow of the KYC document processing system.
 
-![System Architecture](images/architecture.png)
 
+![System Architecture](images/diagram-export-10-13-2024-7_44_03-PM.png)
 
 
 ## Pipeline Components
