@@ -5,12 +5,21 @@ from PIL import Image
 from io import BytesIO
 import requests
 import os
-
-import os
+from dotenv import load_dotenv
 import openai
-os.environ["FIREWORKS_API_KEY"] = "fw_3ZYfxHwhiBcN7MvMuZyemtjq"
-API_KEY = os.environ.get("FIREWORKS_API_KEY")
-client = openai.Client(api_key="fw_3ZZMiTWAZFcP2JQ6AjSyX3zz", base_url="https://api.fireworks.ai/inference/v1")
+
+# Load environment variables
+load_dotenv()
+
+# Access the API key
+API_KEY = os.getenv("API_KEY")
+
+if not API_KEY:
+    raise ValueError("API_KEY not found in environment variables. Please set it in your .env file or in your environment.")
+
+# Set up the Fireworks client
+client = openai.Client(api_key=API_KEY, base_url="https://api.fireworks.ai/inference/v1")
+
 
 def encode_image_base64(img):
     if img.mode in ('RGBA', 'LA'):
