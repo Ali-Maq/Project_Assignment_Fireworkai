@@ -68,7 +68,7 @@ The AI-driven KYC document processing system architecture consists of the follow
 For better understanding, please refer to the diagram below, which visually represents the system architecture and flow of the KYC document processing system.
 
 
-![System Architecture](images/diagram-export-10-13-2024-7_44_03-PM.png)
+![System Architecture](images/diagram-export-10-13-2024-9_21_38-PM.png)
 
 
 ## Pipeline Components
