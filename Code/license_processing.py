@@ -48,6 +48,7 @@ class LicenseData(BaseModel):
     restrictions: Optional[str] = Field(None, description="Restrictions (any limitations or conditions on the license)")
 
 
+
 def encode_image_base64(img):
     if img.mode in ('RGBA', 'LA'):
         img = img.convert('RGB')
@@ -62,15 +63,14 @@ def encode_image_direct(image_path):
 def extract_json_from_llama11b(image_base64):
     url = "https://api.fireworks.ai/inference/v1/chat/completions"
     
-    # Chain-of-thought prompting: guiding the model to extract all relevant fields step by step
+    # Generalized prompt for chain-of-thought reasoning to extract all relevant fields
     prompt = (
         "You are tasked with extracting fields from a driver's license. The license may have variations in naming, "
         "so identify and extract any fields that correspond to the following JSON structure:\n"
         f"{LicenseData.schema_json(indent=2)}\n"
         "Fields like 'issuance date', 'license class', or 'endorsements' may be labeled differently (e.g., 'ISS' for issuance date). "
-        "Carefully identify the appropriate fields even if they are named differently.\n"
         "Ensure that the output is accurate and that any optional fields missing from the license are returned as null. "
-        "If certain fields are ambiguous, return all candidates."
+        "If certain fields are ambiguous, use your best reasoning to resolve them."
     )
     
     payload = {
@@ -139,16 +139,14 @@ def validate_fields_with_llama405b(extracted_json, raw_text):
     validation_prompt = f"""
     You are an expert in US driver's license validation. Your task is to validate the extracted data and handle variations in field naming across different states.
 
-    1. First, validate each field based on the context of the raw text.
-    2. If a field is missing or ambiguous, consider alternative field names (e.g., 'ISS' for issuance date, 'Class' for license class).
-    3. Use reasoning to match ambiguous fields to their correct place in the schema, or provide candidates where appropriate.
-    4. Return all fields in the JSON format below, adhering to the schema:
+    1. Validate each field based on the context of the raw text.
+    2. If a field is missing or ambiguous, reason through the most appropriate match from the raw text and context.
+    3. Ensure that any fields like 'issuance date' or 'license class' that may appear under alternative names are extracted and validated correctly.
+    4. Return the final validated and corrected JSON output, adhering to the following schema:
     {LicenseData.schema_json(indent=2)}
 
     Extracted JSON: {json.dumps(extracted_json)}
     Raw Text from Image: {raw_text}
-
-    Return the final corrected and validated JSON output.
     """
 
     payload = {
@@ -176,13 +174,8 @@ def validate_fields_with_llama405b(extracted_json, raw_text):
     validated_data = response.json()
     validated_json = json.loads(validated_data['choices'][0]['message']['content'])
 
-    # If a field is still missing, try a tree-of-thought fallback mechanism
-    for field in LicenseData.__fields__:
-        if field not in validated_json:
-            print(f"Field '{field}' is missing. Exploring alternative interpretations from raw text...")
-            validated_json[field] = extract_field_from_text(field, raw_text) or None
-
     return validated_json
+
 
 
 def process_license(image_path):
