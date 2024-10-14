@@ -137,6 +137,9 @@ def validate_fields_with_llama405b(extracted_json, raw_text):
     url = "https://api.fireworks.ai/inference/v1/chat/completions"
 
     validation_prompt = f"""
+    Extracted JSON: {json.dumps(extracted_json)}
+    Raw Text from Image: {raw_text}
+
     You are an expert in US driver's license validation. Your task is to validate the extracted data and handle variations in field naming across different states.
 
     1. Validate each field based on the context of the raw text.
@@ -145,8 +148,7 @@ def validate_fields_with_llama405b(extracted_json, raw_text):
     4. Return the final validated and corrected JSON output, adhering to the following schema:
     {LicenseData.schema_json(indent=2)}
 
-    Extracted JSON: {json.dumps(extracted_json)}
-    Raw Text from Image: {raw_text}
+    
     """
 
     payload = {
