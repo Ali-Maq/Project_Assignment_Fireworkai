@@ -7,11 +7,29 @@ from streamlit_cropper import st_cropper
 from orientation import correct_image_orientation, get_orientation_from_llama
 from license_processing import process_license
 from passport_processing import process_passport
-
+from dotenv import load_dotenv
 import openai
-os.environ["FIREWORKS_API_KEY"] = "fw_3ZYfxHwhiBcN7MvMuZyemtjq"
-API_KEY = os.environ.get("FIREWORKS_API_KEY")
-client = openai.Client(api_key="fw_3ZZMiTWAZFcP2JQ6AjSyX3zz", base_url="https://api.fireworks.ai/inference/v1")
+
+# Load environment variables
+load_dotenv()
+
+# Access the API key
+API_KEY = os.getenv("API_KEY")
+
+if not API_KEY:
+    raise ValueError("API_KEY not found in environment variables. Please set it in your .env file or in your environment.")
+
+# Set up the Fireworks client
+client = openai.Client(api_key=API_KEY, base_url="https://api.fireworks.ai/inference/v1")
+
+# Use API_KEY in your requests
+headers = {
+    "Accept": "application/json",
+    "Content-Type": "application/json",
+    "Authorization": f"Bearer {API_KEY}"
+}
+
+
 
 # Try to import LicenseData, but don't fail if it's not available
 try:
