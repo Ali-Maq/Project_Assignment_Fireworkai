@@ -2,8 +2,6 @@ streamlit
 requests==2.31.0
 openai
 Pillow  # Using PIL for image operations
-json
-os
 io
 base64
 pprint
