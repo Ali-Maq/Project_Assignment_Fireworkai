@@ -2,7 +2,7 @@
 
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://projectassignmentfireworkai-zkorxhoprhrvfgnsiv4iu2.streamlit.app/)
 
-![Project Screenshot](path_to_your_screenshot.png)
+![Project Screenshot](images/hg.png)
 
 This repository contains my implementation of an AI-driven system for processing Know Your Customer (KYC) documents. This project was part of an interview assignment provided by Fireworks AI. It is designed to automate the identity verification process for various document types, such as passports and driver's licenses, leveraging advanced AI techniques for information extraction, validation, and structuring.
 
