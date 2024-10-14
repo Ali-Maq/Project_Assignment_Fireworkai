@@ -23,12 +23,7 @@ if not API_KEY:
 # Set up the Fireworks client
 client = openai.Client(api_key=API_KEY, base_url="https://api.fireworks.ai/inference/v1")
 
-# Use API_KEY in your requests
-headers = {
-    "Accept": "application/json",
-    "Content-Type": "application/json",
-    "Authorization": f"Bearer {API_KEY}"
-}
+
 
 # Rest of your license_processing.py code...
 class Address(BaseModel):
