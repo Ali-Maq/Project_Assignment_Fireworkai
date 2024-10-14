@@ -7,11 +7,28 @@ import requests
 from pprint import pprint
 import os
 import openai
+from pydantic import BaseModel, Field
+from typing import Optional
+
 os.environ["FIREWORKS_API_KEY"] = "fw_3ZYfxHwhiBcN7MvMuZyemtjq"
 API_KEY = os.environ.get("FIREWORKS_API_KEY")
 client = openai.Client(api_key="fw_3ZZMiTWAZFcP2JQ6AjSyX3zz", base_url="https://api.fireworks.ai/inference/v1")
 
+class MRZ(BaseModel):
+    line1: str = Field(..., description="First line of MRZ (44 characters)")
+    line2: str = Field(..., description="Second line of MRZ (44 characters)")
 
+class PassportData(BaseModel):
+    full_name: str = Field(..., description="Full name of the passport holder")
+    date_of_birth: str = Field(..., description="Date of birth (DD MMM YYYY)")
+    passport_number: str = Field(..., description="Passport number")
+    nationality: str = Field(..., description="Nationality")
+    place_of_birth: Optional[str] = Field(None, description="Place of birth")
+    issuance_date: str = Field(..., description="Date of issuance (DD MMM YYYY)")
+    expiration_date: str = Field(..., description="Expiration date (DD MMM YYYY)")
+    sex: str = Field(..., description="Sex (M or F)")
+    authority: str = Field(..., description="Issuing authority")
+    mrz: MRZ = Field(..., description="Machine Readable Zone data")
 
 def encode_image_base64(img):
     if img.mode in ('RGBA', 'LA'):
@@ -26,32 +43,29 @@ def encode_image_direct(image_path):
 
 def extract_json_from_llama11b(image_base64):
     url = "https://api.fireworks.ai/inference/v1/chat/completions"
-    prompt = (
-    "Extract the following fields from the passport and its MRZ (Machine Readable Zone) "
-    "and provide them in a structured JSON format:\n"
-    "- Full Name (exactly as shown)\n"
-    "- Date of Birth (in format: DD MMM YYYY)\n"
-    "- Passport Number (ID)\n"
-    "- Nationality\n"
-    "- Place of Birth (exactly as shown)\n"
-    "- Issuance Date (in format: DD MMM YYYY)\n"
-    "- Expiration Date (in format: DD MMM YYYY)\n"
-    "- Sex (M or F)\n"
-    "- Authority (full name of issuing authority)\n"
-    "- MRZ (Machine Readable Zone)\n"
-    "From the MRZ, extract:\n"
-    "- Passport Number\n"
-    "- Issuing Country\n"
-    "- Date of Birth (in format: YYMMDD)\n"
-    "- Expiration Date (in format: YYMMDD)\n"
-    "- Sex\n"
-    "Ensure that the JSON output is structured correctly and the fields are properly filled. "
-    "Do not use 'Not Provided' for any field. If a field is not visible, use null. "
-    "Only provide data that can be verified from the image."
-    )
+    prompt = """
+    Extract the following fields from the passport and provide them in a structured JSON format:
+    - Full Name
+    - Date of Birth (in format: DD MMM YYYY)
+    - Passport Number
+    - Nationality
+    - Place of Birth (if visible)
+    - Issuance Date (in format: DD MMM YYYY)
+    - Expiration Date (in format: DD MMM YYYY)
+    - Sex (M or F)
+    - Authority (issuing authority)
+    - MRZ (Machine Readable Zone)
+
+    For the MRZ, provide the exact two lines of 44 characters each. Do not interpret the MRZ, just provide the raw data.
+
+    Ensure that the JSON output is structured correctly and the fields are properly filled. 
+    If a field is not visible or not applicable, use null. 
+    Only provide data that can be verified from the image.
+    """
     payload = {
         "model": "accounts/fireworks/models/llama-v3p2-11b-vision-instruct",
         "max_tokens": 16384,
+        "temperature": 0.1,
         "response_format": {"type": "json_object"},
         "messages": [
             {
@@ -104,8 +118,7 @@ def extract_raw_text_from_llama11b(image_base64):
 
 def validate_fields_with_llama405b(extracted_json, raw_text):
     url = "https://api.fireworks.ai/inference/v1/chat/completions"
-
-    validation_prompt = """
+    validation_prompt = f"""
     You are an expert in passport validation. Your task is to validate and correct the extracted information from a passport image.
     
     Given the extracted JSON and raw text from the image, please:
@@ -113,103 +126,37 @@ def validate_fields_with_llama405b(extracted_json, raw_text):
     2. Correct any errors or inconsistencies.
     3. Fill in any missing information that can be inferred from the raw text.
     4. Ensure all dates are in the format DD MMM YYYY.
-    5. Make sure the MRZ data is consistent with the main passport data.
+    5. Make sure the MRZ data consists of two lines of exactly 44 characters each.
     
-    Pay special attention to:
-    - Issuance Date and Expiration Date
-    - Authority (issuing authority)
-    - Consistency between the main data and MRZ data
-    
-    Extracted JSON: {extracted_json}
+    Extracted JSON: {json.dumps(extracted_json)}
     
     Raw Text from Image: {raw_text}
     
-    Please provide the corrected and validated data in the same JSON format, ensuring all fields are filled accurately based on the available information. If any field is genuinely not available, use null instead of "Not Provided".
+    Please provide the extracted and validated data in a JSON format. If a field is not available or not applicable, use null for optional fields or a placeholder for required fields.
     """
-
     payload = {
         "model": "accounts/fireworks/models/llama-v3p1-405b-instruct",
         "max_tokens": 16384,
-        "temperature": 0.2,  # Lower temperature for more focused outputs
+        "temperature": 0.2,
         "response_format": {"type": "json_object"},
         "messages": [
             {
                 "role": "user",
-                "content": validation_prompt.format(extracted_json=json.dumps(extracted_json), raw_text=raw_text)
+                "content": validation_prompt
             }
         ]
     }
-
     headers = {
         "Accept": "application/json",
         "Content-Type": "application/json",
         "Authorization": f"Bearer {API_KEY}"
     }
-
     response = requests.post(url, headers=headers, json=payload)
     response.raise_for_status()
-
     print("Validation and correction response from LLaMA 405B:")
     validated_data = response.json()
     pprint(validated_data)
-
-    # Extract the content from the response
-    validated_json = json.loads(validated_data['choices'][0]['message']['content'])
-
-    return validated_json
-
-def format_with_llama45b(extracted_json, raw_text):
-    url = "https://api.fireworks.ai/inference/v1/chat/completions"
-    formatting_prompt = (
-        "Please take the following extracted fields and raw text from a passport "
-        "and format it into a properly structured JSON format. Ensure that the output follows "
-        "this schema:\n"
-        "{\n"
-        '"Full Name": "",\n'
-        '"Date of Birth": "",\n'
-        '"Passport Number (ID)": "",\n'
-        '"Nationality": "",\n'
-        '"Place of Birth": "",\n'
-        '"Issuance Date": "",\n'
-        '"Expiration Date": "",\n'
-        '"Sex": "",\n'
-        '"Authority": "",\n'
-        '"MRZ": {\n'
-        '  "Passport Number": "",\n'
-        '  "Issuing Country": "",\n'
-        '  "Date of Birth": "",\n'
-        '  "Expiration Date": "",\n'
-        '  "Sex": ""\n'
-        "}\n"
-        "}\n"
-        "Please ensure all fields are filled accurately based on the extracted data.\n"
-        f"Extracted JSON: {json.dumps(extracted_json)}\n"
-        f"Raw Text: {raw_text}\n"
-    )
-    payload = {
-        "model": "accounts/fireworks/models/llama-v3p1-405b-instruct",
-        "max_tokens": 16384,
-        "response_format": {"type": "json_object"},
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": formatting_prompt}
-                ]
-            }
-        ]
-    }
-    headers = {
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {API_KEY}"
-    }
-    response = requests.post(url, headers=headers, json=payload)
-    response.raise_for_status()
-    print("Formatted JSON response from LLaMA 4.5B including MRZ:")
-    pprint(response.json())
-    return response.json()
-
+    return validated_data
 
 
 def process_passport(image_path):
@@ -243,21 +190,28 @@ def process_passport(image_path):
         "description": "Step 4: Validating and correcting extracted information using LLaMA 405B model...",
         "raw_output": {}
     })
-    validated_fields = validate_fields_with_llama405b(extracted_json, raw_text)
-    buffer[-1]["raw_output"] = validated_fields
+    validated_data = validate_fields_with_llama405b(extracted_json, raw_text)
+    buffer[-1]["raw_output"] = validated_data
 
-    # Step 5: Format final output
+    # Step 5: Final output and validation
     buffer.append({
-        "description": "Step 5: Formatting the final validated output as a structured JSON...",
-        "raw_output": validated_fields
+        "description": "Step 5: Final validated output",
+        "raw_output": validated_data
     })
 
-    return validated_fields, buffer
+    # Validate against Pydantic model
+    try:
+        content = json.loads(validated_data['choices'][0]['message']['content'])
+        # Ensure MRZ is properly formatted
+        if 'mrz' in content and isinstance(content['mrz'], str):
+            mrz_lines = content['mrz'].split('\n')
+            if len(mrz_lines) == 2 and all(len(line) == 44 for line in mrz_lines):
+                content['mrz'] = {'line1': mrz_lines[0], 'line2': mrz_lines[1]}
+            else:
+                raise ValueError("MRZ format is incorrect")
+        final_data = PassportData(**content)
+        return final_data.dict(), buffer
+    except Exception as e:
+        print(f"Error in validating result: {str(e)}")
+        return content, buffer
 
-
-
-# Example usage
-# if __name__ == "__main__":
-#     image_path = 'passport-1.jpeg'
-#     result = process_passport(image_path)
-#     print("Final Validated JSON Output:", result)
