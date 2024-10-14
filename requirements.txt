@@ -3,3 +3,4 @@ requests==2.31.0
 openai
 Pillow
 streamlit-cropper
+python-dotenv
